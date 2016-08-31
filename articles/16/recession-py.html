@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Forecasting Economic Recessions with LASSO (Python Version)</title>
+  <meta name="description" content="This post gives some Python code to implement LASSO-based forecasts of economic recessions. It relies upon recession_data.csv.You’ll need the following modul...">
+
+  <!-- Google Fonts loaded here depending on setting in _data/options.yml true loads font, blank does not-->
+  
+    <link href='//fonts.googleapis.com/css?family=Lato:400,400italic' rel='stylesheet' type='text/css'>
+  
+  
+  <!-- Load up MathJax script if needed ... specify in /_data/options.yml file-->
+  
+    <script type="text/javascript" src="//cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+  
+
+  <link rel="stylesheet" type="text/css" href="/tufte-jekyll/css/tufte.css">
+  <!-- <link rel="stylesheet" type="text/css" href="/tufte-jekyll/css/print.css" media="print"> -->
+
+  <link rel="canonical" href="/tufte-jekyll/articles/16/recession-py">
+
+  <link rel="alternate" type="application/rss+xml" title="Tufte" href="/tufte-jekyll/feed.xml" />
+</head>
+
+  <body>
+    <!--- Header and nav template site-wide -->
+<header>
+    <nav class="group">
+	<a href="/tufte-jekyll/"><img class="badge" src="/tufte-jekyll/assets/img/badge_1.png" alt="CH"></a>
+	
+		
+  	
+		
+		    
+		      <a href="/tufte-jekyll/">blog</a>
+		    
+	    
+  	
+		
+		    
+		      <a href="/tufte-jekyll/page/">page</a>
+		    
+	    
+  	
+		
+		    
+		      <a href="/tufte-jekyll/about/">About</a>
+		    
+	    
+  	
+		
+		    
+		      <a href="/tufte-jekyll/css/print.css"></a>
+		    
+	    
+  	
+		
+  	
+	</nav>
+</header>
+    <article class="group">
+      <h1>Forecasting Economic Recessions with LASSO (Python Version)</h1>
+<p class="subtitle">August 25, 2016</p>
+
+<p>This post gives some Python code to implement LASSO-based forecasts of economic recessions. It relies upon <a href="/assets/recession_data.csv">recession_data.csv</a>.</p>
+
+<p>You’ll need the following modules:</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"> <span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">re</span><span class="o">,</span> <span class="nn">datetime</span>
+ <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+ <span class="kn">import</span> <span class="nn">pandas</span> <span class="kn">as</span> <span class="nn">pd</span>
+ <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+ <span class="kn">from</span> <span class="nn">sklearn.linear_model</span> <span class="kn">import</span> <span class="n">LogisticRegression</span> </code></pre></figure>
+
+<p>We’ll need to clean the data first, making variable names one word (without Index on the end), removing non-numeric characters, and making variables lowercase.</p>
+
+<!--more-->
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"><span class="s">"""
+Clean the data
+"""</span>
+<span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="s">'/Users/jasonweinreb/jweinreb.git/jweinreb.github.io/Recession Prediction'</span><span class="p">)</span>
+<span class="n">dateparse</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">strptime</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s">'</span><span class="si">%</span><span class="s">m/</span><span class="si">%</span><span class="s">d/</span><span class="si">%</span><span class="s">y'</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s">"recession_data.csv"</span><span class="p">,</span> <span class="n">parse_dates</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">index_col</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">date_parser</span> <span class="o">=</span> <span class="n">dateparse</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">year</span> <span class="o">&gt;=</span> <span class="mi">1978</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">year</span> <span class="o">&lt;</span> <span class="mi">2016</span><span class="p">)]</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">method</span> <span class="o">=</span> <span class="s">'pad'</span><span class="p">)</span>
+
+<span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">var</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">var</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+<span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r' index'</span><span class="p">,</span> <span class="s">''</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+<span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r' '</span><span class="p">,</span> <span class="s">''</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+<span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r'</span><span class="si">%</span><span class="s">'</span><span class="p">,</span> <span class="s">''</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+<span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s">r'#'</span><span class="p">,</span> <span class="s">''</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span></code></pre></figure>
+
+<p>Next, we’ll code up variables using pandas for help with rolling averages, etc.</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"><span class="s">'''
+Consumer Sentiment 
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'conssent1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">conssent</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c"># 6m change in 3mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'conssent2'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">conssent</span><span class="o">/</span><span class="n">df</span><span class="o">.</span><span class="n">conssent</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="nb">max</span><span class="p">())</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">9</span><span class="p">)</span><span class="o">.</span><span class="nb">min</span><span class="p">()</span> <span class="c"># 9m min of current / annual max </span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">leicexp</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span> 
+<span class="n">df</span><span class="p">[</span><span class="s">'conssent3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span><span class="c"># 8m count of increase in 2mma</span>
+
+<span class="s">'''
+Corporate Credit
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'cred1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">moodcavg</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c">#6m pc in 2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'cred2'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">moodcbaa</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c"># 4mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'cred3'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">moodcaaa</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">moodcbaa</span><span class="p">)</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c">#6m pc in spread</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">moodcavg</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'cred4'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="c"># 8m count of increase in 2mma</span>
+
+<span class="s">'''
+Broad Indices
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">adsbci</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">cfnai</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">coitotl</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c">#6m pc</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices4'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">leilci</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices5'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">oustdiff</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c"># 3mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices6'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">phffanx0</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices7'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">s5finl</span> <span class="o">/</span> <span class="n">df</span><span class="o">.</span><span class="n">s5finl</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">14</span><span class="p">)</span><span class="o">.</span><span class="nb">max</span><span class="p">()</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">leiyoy</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'indices8'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="c"># 8m count of increase in 2mma</span>
+
+<span class="s">'''
+Housing
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'housing1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">leibp</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span> <span class="c"># 12m pc of 3mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'housing2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">nhslnfs</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span> <span class="c">#12m pc</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'housing3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">nhsltot</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c"># 3mma</span>
+
+<span class="s">'''
+Manufacturing
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'manu1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">napmnewo</span> <span class="o">/</span> <span class="n">df</span><span class="o">.</span><span class="n">napminv</span> <span class="c"># current ord/inv ratio</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'manu2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">napmpmi</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c"># 2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'manu3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">crbrind</span> <span class="o">/</span> <span class="n">df</span><span class="o">.</span><span class="n">crbrind</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="nb">max</span><span class="p">()</span> <span class="c"># current value / 12m max</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'manu4'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ecrsuscp</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c">#4mma of 6m change</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'manu5'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ipvptrmh</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c"># 3mma in 12m pc</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">leinwcn</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'manu6'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="c"># 8m count of increase in 2mma</span>
+
+<span class="s">'''
+Macro
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'macro1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">uscrwtic</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span> <span class="c">#12m pc</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'macro2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">dxy</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c">#4mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'macro3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">gdpcyoy</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'macro4'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">m1yoy</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">cpiyoy</span> <span class="c"># real m1 yoy</span>
+
+<span class="s">'''
+Equities
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'equities1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">spx</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c">#6m pc</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">leistkp</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'equities2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="c">#8m count in increase in 2mma</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">spx</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="o">/</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'equities3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'equities4'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">tran</span> <span class="o">/</span> <span class="n">df</span><span class="o">.</span><span class="n">tran</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="nb">max</span><span class="p">()</span>
+<span class="s">'''
+Employment
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp1'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">injcjc4</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span><span class="c">#6m pc in 2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">injcjc4</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span> <span class="c">#12m pc </span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">injcjc4</span> <span class="o">/</span> <span class="n">df</span><span class="o">.</span><span class="n">injcjc4</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="nb">min</span><span class="p">()</span> <span class="c"># cufrent / 12m min</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">leiavgw</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp4'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="c"># 8m count of increase in 2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp5'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">leiwkij</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c">#2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp6'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">nfpt</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span> <span class="c"># 12m pc in 3mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp7'</span><span class="p">]</span> <span class="o">=</span> <span class="mi">50</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">oustneg</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'emp8'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">usestemp</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span> <span class="c">#12m pc</span>
+
+<span class="s">'''
+Yield Curve
+'''</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc1'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">dljhytw</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">dljhytw</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="nb">max</span><span class="p">()</span> <span class="c"># spread/12mm max</span>
+<span class="n">ser</span> <span class="o">=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">leiirte</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span><span class="o">+</span> <span class="mf">0.5</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc2'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ser</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="c">#8m count of increase in 2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc3'</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span><span class="o">/</span><span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="nb">max</span><span class="p">()</span> <span class="c"># current/12m max</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc4'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg5yr</span><span class="p">)</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c">#5s10s 6m pc</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc5'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg5yr</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span> <span class="c">#2mma</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc6'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg3m</span><span class="p">)</span><span class="o">.</span><span class="n">pct_change</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span> <span class="c"># 3s10s 6m pc</span>
+<span class="n">df</span><span class="p">[</span><span class="s">'yc7'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">usgg10yr</span> <span class="o">-</span> <span class="n">df</span><span class="o">.</span><span class="n">usgg3m</span><span class="p">)</span><span class="o">.</span><span class="n">rolling</span><span class="p">(</span><span class="n">window</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></code></pre></figure>
+
+<p>Let’s remove variables with more than 50 missing observations, which will severely limit the size of our training data. The code is a bit clunky but gets the job done:</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"><span class="c"># Remove variables with more than 50 missing obs.</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(([</span><span class="mi">0</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">45</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)))))]</span>
+<span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)):</span>
+    <span class="n">idx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="nb">sum</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[:,</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">isnull</span><span class="p">()</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">50</span><span class="p">)</span>
+    
+<span class="n">idx2</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">x</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[:,</span><span class="n">idx2</span><span class="p">]</span>
+<span class="n">idx3</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">))</span> <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[</span><span class="n">j</span><span class="p">,:]</span><span class="o">.</span><span class="n">isnull</span><span class="p">()</span><span class="o">.</span><span class="nb">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[</span><span class="n">idx3</span><span class="p">,:]</span></code></pre></figure>
+
+<p>Now we’re ready to fit the lasso to our training data, all observations before March 2005. Our test data will be all observations from April 2005.</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"> 
+<span class="n">train</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[:</span><span class="s">'2005-03-01'</span><span class="p">,</span> <span class="p">:]</span>
+<span class="n">test</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">ix</span><span class="p">[</span><span class="s">'2005-04-01'</span><span class="p">:</span> <span class="p">,</span> <span class="p">:]</span>
+               
+<span class="n">X</span> <span class="o">=</span> <span class="n">train</span><span class="o">.</span><span class="n">ix</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">train</span><span class="p">[</span><span class="s">'usrindex'</span><span class="p">]</span>
+<span class="n">mod</span> <span class="o">=</span> <span class="n">LogisticRegression</span><span class="p">(</span><span class="n">penalty</span> <span class="o">=</span> <span class="s">'l1'</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span></code></pre></figure>
+
+<p>Next we can fit our model to the test data and compute our out-of-sample MSE.</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">X2</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">ix</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span>
+<span class="n">y2</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">ix</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">yhat2</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X2</span><span class="p">)</span>
+<span class="n">mse</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">yhat2</span> <span class="o">-</span> <span class="n">y2</span><span class="p">))</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="nb">len</span><span class="p">(</span><span class="n">y2</span><span class="p">))</span>
+<span class="k">print</span><span class="p">(</span><span class="n">mse</span><span class="p">)</span>
+<span class="c"># 0.0542635658915</span></code></pre></figure>
+
+<p>Finally, we can plot the in-sample and out-of-sample recession forecasts with matplotlib.</p>
+
+<figure class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">mod</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X</span><span class="p">)[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span> <span class="s">'In-sample prediction (to Mar 2005)'</span><span class="p">,</span> <span class="n">linewidth</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">'Prob(Recession)'</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">X2</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">mod</span><span class="o">.</span><span class="n">predict_proba</span><span class="p">(</span><span class="n">X2</span><span class="p">)[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">color</span> <span class="o">=</span> <span class="s">'r'</span><span class="p">,</span> 
+         <span class="n">label</span> <span class="o">=</span> <span class="s">'Out-of-sample prediction (from Apr 2005)'</span><span class="p">,</span> <span class="n">linewidth</span> <span class="o">=</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s">'LASSO Logistic Model of US Recessions'</span><span class="p">)</span>
+<span class="c"># Shrink current axis's height by 10% on the bottom</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
+<span class="n">box</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_position</span><span class="p">()</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_position</span><span class="p">([</span><span class="n">box</span><span class="o">.</span><span class="n">x0</span><span class="p">,</span> <span class="n">box</span><span class="o">.</span><span class="n">y0</span> <span class="o">+</span> <span class="n">box</span><span class="o">.</span><span class="n">height</span> <span class="o">*</span> <span class="mf">0.1</span><span class="p">,</span>
+                 <span class="n">box</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">box</span><span class="o">.</span><span class="n">height</span> <span class="o">*</span> <span class="mf">0.9</span><span class="p">])</span>
+<span class="c"># Put a legend below current axis</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s">'upper center'</span><span class="p">,</span> <span class="n">bbox_to_anchor</span><span class="o">=</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.05</span><span class="p">),</span>
+          <span class="n">fancybox</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">shadow</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">ncol</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span></code></pre></figure>
+
+<figure class="fullwidth"><img src="/tufte-jekyll/assets/img/recession-py.png" /><figcaption></figcaption></figure>
+
+
+
+
+    </article>
+    <span class="print-footer">Forecasting Economic Recessions with LASSO (Python Version) - August 25, 2016 - clay harmon</span>
+    <footer>
+  <hr class="slender">
+  <ul class="footer-links">
+    <li><a href="mailto:hate@spam.net"><span class="icon-mail"></span></a></li>    
+    
+      <li>
+        <a href="//www.twitter.com/twitter_handle"><span class="icon-twitter"></span></a>
+      </li>
+    
+      <li>
+        <a href="//plus.google.com/+googlePlusName"><span class="icon-googleplus"></span></a>
+      </li>
+    
+      <li>
+        <a href="//github.com/GithubHandle"><span class="icon-github"></span></a>
+      </li>
+    
+      <li>
+        <a href="//www.flickr.com/photos/FlickrUserID"><span class="icon-flickr"></span></a>
+      </li>
+    
+      <li>
+        <a href="/feed"><span class="icon-feed"></span></a>
+      </li>
+      
+  </ul>
+<div class="credits">
+<span>&copy; 2016 &nbsp;&nbsp;CLAY HARMON</span></br> <br>
+<span>This site created with the <a href="//github.com/clayh53/tufte-jekyll">Tufte theme for Content-centric blogging </a> in <a href="//jekyllrb.com">Jekyll</a>.</span> 
+</div>  
+</footer>
+  </body>
+</html>
